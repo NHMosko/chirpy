@@ -14,6 +14,7 @@ import (
 func main() {
 	godotenv.Load()
 	platform := os.Getenv("PLATFORM")
+	jwtSecret := os.Getenv("JWTSECRET")
 	dbURL := os.Getenv("DB_URL")
 	db,err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -27,18 +28,26 @@ func main() {
 	apiCfg := apiConfig{
 		dbQueries: dbQueries,
 		platform: platform,
+		jwtSecret: jwtSecret,
 	}
 
 	mux := http.NewServeMux()
 	mux.Handle(prefix, apiCfg.middleMetricsInc(handle(prefix, filepathRoot)))
+
 	mux.HandleFunc("GET /admin/metrics", apiCfg.getMetrics)
+	mux.HandleFunc("POST /admin/reset", apiCfg.handleReset)
+	mux.HandleFunc("GET /api/healthz", getHealth)
+
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpByID)
-	mux.HandleFunc("GET /api/healthz", getHealth)
-	mux.HandleFunc("POST /admin/reset", apiCfg.handleReset)
-	mux.HandleFunc("POST /api/users", apiCfg.createUser)
 	mux.HandleFunc("POST /api/chirps", apiCfg.createChirp)
+
+	mux.HandleFunc("POST /api/users", apiCfg.createUser)
+	mux.HandleFunc("PUT /api/users", apiCfg.updateUser)
 	mux.HandleFunc("POST /api/login", apiCfg.login)
+
+	mux.HandleFunc("POST /api/refresh", apiCfg.handleRefresh)
+	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevoke)
 
 	server := http.Server{
 		Handler: mux,

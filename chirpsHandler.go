@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/NHMosko/chirpy/internal/auth"
 	"github.com/NHMosko/chirpy/internal/database"
 	"github.com/google/uuid"
 )
@@ -21,7 +22,6 @@ type chirpResponse struct {
 func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	type chirpInput struct {
 		Body string `json:"body"`
-		UserId string `json:"user_id"`
 	}
 	input := chirpInput{}
 	decodeInput(w, r, &input)
@@ -32,8 +32,12 @@ func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	}
 	cleanBody := cleanWords(input.Body)
 
-	//log.Printf("User ID: %v.\nChirp Body: %s.", input.UserId, input.Body)
-	userID, err := uuid.Parse(input.UserId)
+	token, err := auth.GetBearerToken(r.Header, "jwt")
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	user, err := auth.ValidateJWT(token, a.jwtSecret)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -42,7 +46,7 @@ func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	chirp, err := a.dbQueries.CreateChirp(r.Context(),
 		database.CreateChirpParams{
 			Body: cleanBody,
-			UserID: userID,
+			UserID: user,
 		})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
