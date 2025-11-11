@@ -37,16 +37,16 @@ func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
-	user, err := auth.ValidateJWT(token, a.jwtSecret)
+	userID, err := auth.ValidateJWT(token, a.jwtSecret)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err.Error())
+		respondWithError(w, http.StatusForbidden, err.Error())
 		return
 	}
 
 	chirp, err := a.dbQueries.CreateChirp(r.Context(),
 		database.CreateChirpParams{
 			Body: cleanBody,
-			UserID: user,
+			UserID: userID,
 		})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
@@ -108,3 +108,47 @@ func convertChirp(chirp database.Chirp) *chirpResponse {
 	}
 	return &chirpData
 }
+
+
+func (a *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header, "jwt")
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	userID, err := auth.ValidateJWT(token, a.jwtSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	id := r.PathValue("chirpID")
+
+	chirp_id, err := uuid.Parse(id)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	chirp, err := a.dbQueries.GetChirpByID(r.Context(), chirp_id)
+	if err != nil {
+		log.Printf("Chirp Not Found! ID: %v.", chirp_id)
+		respondWithError(w, http.StatusNotFound, "Couldn't find chirp on database")
+		return
+	}
+
+	if chirp.UserID != userID {
+		respondWithError(w, http.StatusForbidden, "This chirp isn't yours to delete")
+		return
+	}
+
+	err  = a.dbQueries.DeleteChirpByID(r.Context(), chirp_id)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	
+	log.Printf("Chirp Deleted Succesfully!")
+	w.WriteHeader(204)
+}
+

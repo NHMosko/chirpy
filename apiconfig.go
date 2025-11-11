@@ -17,6 +17,7 @@ type apiConfig struct {
 	dbQueries *database.Queries
 	platform string
 	jwtSecret string
+	polkaKey string
 }
 
 func (a *apiConfig) middleMetricsInc(next http.Handler) http.HandlerFunc {
@@ -76,6 +77,7 @@ func (a *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email string `json:"email"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
 	user, err := a.dbQueries.CreateUser(r.Context(), database.CreateUserParams{
@@ -92,6 +94,7 @@ func (a *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email: user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	log.Printf("New User Created")
@@ -152,6 +155,7 @@ func (a *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 		Email string `json:"email"`
 		Token string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
 	userData := userResponse{
@@ -161,6 +165,7 @@ func (a *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 		Email: user.Email,
 		Token: token,
 		RefreshToken: refreshToken,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	log.Printf("Logged in Succesfully")
@@ -202,12 +207,14 @@ func (a *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email string `json:"email"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 	userData := userResponse{
 		Id: user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email: user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	}
 
 	log.Printf("User Updated")
@@ -265,3 +272,45 @@ func (a *apiConfig) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	log.Printf("A refresh token has been revoked.")
 	w.WriteHeader(204)
 }	
+
+
+func (a *apiConfig) polkaWebhook(w http.ResponseWriter, r *http.Request) {
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+	if apiKey != a.polkaKey {
+		respondWithError(w, http.StatusForbidden, "Wrong api key")
+		return
+	}
+
+	type polkaInput struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID string `json:"user_id"`
+		} `json:"data"`
+	}
+	input := polkaInput{}
+	decodeInput(w, r, &input)
+
+	if input.Event != "user.upgraded" {
+		w.WriteHeader(204)
+		return
+	}
+
+	userID, err := uuid.Parse(input.Data.UserID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	user, err := a.dbQueries.UpgradeUser(r.Context(), userID)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	log.Printf("User %v upgraded to Chirpy Red", user.Email)
+	w.WriteHeader(204)
+}

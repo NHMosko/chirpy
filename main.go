@@ -15,6 +15,7 @@ func main() {
 	godotenv.Load()
 	platform := os.Getenv("PLATFORM")
 	jwtSecret := os.Getenv("JWTSECRET")
+	polkaKey := os.Getenv("POLKA_KEY")
 	dbURL := os.Getenv("DB_URL")
 	db,err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -29,6 +30,7 @@ func main() {
 		dbQueries: dbQueries,
 		platform: platform,
 		jwtSecret: jwtSecret,
+		polkaKey: polkaKey,
 	}
 
 	mux := http.NewServeMux()
@@ -41,6 +43,7 @@ func main() {
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpByID)
 	mux.HandleFunc("POST /api/chirps", apiCfg.createChirp)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChirp)
 
 	mux.HandleFunc("POST /api/users", apiCfg.createUser)
 	mux.HandleFunc("PUT /api/users", apiCfg.updateUser)
@@ -48,6 +51,8 @@ func main() {
 
 	mux.HandleFunc("POST /api/refresh", apiCfg.handleRefresh)
 	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevoke)
+
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.polkaWebhook)
 
 	server := http.Server{
 		Handler: mux,
