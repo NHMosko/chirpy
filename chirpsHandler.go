@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/NHMosko/chirpy/internal/auth"
@@ -60,11 +61,36 @@ func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
-	allChirps, err := a.dbQueries.ListChirps(r.Context())
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err.Error())
-		return
+	var allChirps []database.Chirp
+	var err error
+
+	author := r.URL.Query().Get("author_id")
+	if author != "" {
+		authorID, err := uuid.Parse(author)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		allChirps, err = a.dbQueries.ListChirpsByAuthor(r.Context(), authorID)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	} else {
+		allChirps, err = a.dbQueries.ListChirps(r.Context())
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
+
+	sortOrder := r.URL.Query().Get("sort")
+	if sortOrder == "desc" {
+		sort.Slice(allChirps, func(i, j int) bool {
+			return i > j
+		}) 
+	}
+
 
 	var allChirpsData []chirpResponse
 
